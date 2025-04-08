@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Streichholz-Quadrat Visualisierer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Use Inter font */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Style for the matchstick lines */
+        .matchstick {
+            stroke: #8B4513; /* SaddleBrown color for wood */
+            stroke-width: 4; /* Thickness of the matchstick */
+            stroke-linecap: round; /* Rounded ends */
+        }
+        /* Optional: Style for match heads (can be added at line intersections) */
+        .match-head {
+            fill: #DC143C; /* Crimson red */
+        }
+        /* Ensure SVG scales nicely */
+        svg {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 1rem auto; /* Center the SVG */
+        }
+    </style>
+     <link rel="preconnect" href="https://rsms.me/">
+     <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+</head>
+<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="bg-white p-6 md:p-8 rounded-lg shadow-lg w-full max-w-lg text-center">
+        <h1 class="text-2xl md:text-3xl font-bold mb-6 text-gray-800">Streichholz-Quadrat Visualisierer</h1>
+
+        <div class="mb-6">
+            <label for="gridSize" class="block text-sm font-medium text-gray-700 mb-2">Größe des Gitters (n x n):</label>
+            <input type="number" id="gridSize" name="gridSize" min="1" max="15" value="2" class="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+            <p class="text-xs text-gray-500 mt-1">Gib eine Zahl zwischen 1 und 15 ein.</p>
+        </div>
+
+        <button id="visualizeBtn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md transition duration-150 ease-in-out mb-6">
+            Visualisieren & Berechnen
+        </button>
+
+        <div id="visualizationContainer" class="mb-4 border border-gray-200 rounded-md p-4 min-h-[200px] bg-gray-50 flex items-center justify-center">
+            <p id="placeholderText" class="text-gray-500">Visualisierung wird hier angezeigt.</p>
+        </div>
+
+        <div id="resultContainer" class="text-lg font-semibold text-gray-800 h-6">
+            </div>
+
+         <div id="messageArea" class="text-sm text-red-600 mt-2 h-4"></div>
+    </div>
+
+    <script>
+        const gridSizeInput = document.getElementById('gridSize');
+        const visualizeBtn = document.getElementById('visualizeBtn');
+        const visualizationContainer = document.getElementById('visualizationContainer');
+        const resultContainer = document.getElementById('resultContainer');
+        const messageArea = document.getElementById('messageArea');
+        const placeholderText = document.getElementById('placeholderText');
+
+        // Function to draw the matchstick grid
+        function drawGrid(n) {
+            // Clear previous content and messages
+            visualizationContainer.innerHTML = '';
+            resultContainer.innerHTML = '';
+            messageArea.innerHTML = '';
+            if (placeholderText) placeholderText.style.display = 'none'; // Hide placeholder
+
+            // --- Input Validation ---
+            if (isNaN(n) || n < 1 || n > 15) {
+                messageArea.textContent = 'Bitte gib eine gültige Zahl zwischen 1 und 15 ein.';
+                 if (placeholderText) placeholderText.style.display = 'block'; // Show placeholder again
+                return; // Stop execution if input is invalid
+            }
+
+            // --- Calculation ---
+            const totalMatchsticks = 2 * n * (n + 1);
+            resultContainer.textContent = `Benötigte Streichhölzer: ${totalMatchsticks}`;
+
+            // --- SVG Visualization ---
+            const matchstickLength = 30; // Pixel length of one matchstick side
+            const padding = 20; // Padding around the grid
+            const svgWidth = n * matchstickLength + 2 * padding;
+            const svgHeight = n * matchstickLength + 2 * padding;
+
+            // Create SVG element
+            const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            svg.setAttribute("width", svgWidth);
+            svg.setAttribute("height", svgHeight);
+            svg.setAttribute("viewBox", `0 0 ${svgWidth} ${svgHeight}`);
+
+            // Draw horizontal matchsticks
+            for (let row = 0; row <= n; row++) {
+                for (let col = 0; col < n; col++) {
+                    const x1 = padding + col * matchstickLength;
+                    const y1 = padding + row * matchstickLength;
+                    const x2 = padding + (col + 1) * matchstickLength;
+                    const y2 = y1;
+
+                    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    line.setAttribute("x1", x1);
+                    line.setAttribute("y1", y1);
+                    line.setAttribute("x2", x2);
+                    line.setAttribute("y2", y2);
+                    line.setAttribute("class", "matchstick");
+                    svg.appendChild(line);
+                }
+            }
+
+            // Draw vertical matchsticks
+            for (let col = 0; col <= n; col++) {
+                for (let row = 0; row < n; row++) {
+                    const x1 = padding + col * matchstickLength;
+                    const y1 = padding + row * matchstickLength;
+                    const x2 = x1;
+                    const y2 = padding + (row + 1) * matchstickLength;
+
+                    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    line.setAttribute("x1", x1);
+                    line.setAttribute("y1", y1);
+                    line.setAttribute("x2", x2);
+                    line.setAttribute("y2", y2);
+                    line.setAttribute("class", "matchstick");
+                    svg.appendChild(line);
+                }
+            }
+
+            // Append SVG to the container
+            visualizationContainer.appendChild(svg);
+        }
+
+        // Event listener for the button
+        visualizeBtn.addEventListener('click', () => {
+            const n = parseInt(gridSizeInput.value, 10);
+            drawGrid(n);
+        });
+
+        // Initial draw for the default value (e.g., 2x2) on page load
+        drawGrid(parseInt(gridSizeInput.value, 10));
+
+    </script>
+
+</body>
+</html>
