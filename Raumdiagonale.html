@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Interaktiver 3D-Würfel: Diagonalen</title>
+    <title>Interaktiver 3D-Würfel: Diagonalen (Deutlich Dickere Linien)</title>
     <style>
         body {
             margin: 0;
@@ -20,7 +20,12 @@
             width: 100%;
             height: calc(100% - 60px); /* Adjust height for controls */
             position: relative;
-            background-color: #e0e0e0;
+            background-color: #e0e0e0; /* Match scene background */
+        }
+        canvas { /* Ensure canvas fills container */
+             display: block;
+             width: 100%;
+             height: 100%;
         }
         #controls {
             width: 100%;
@@ -53,12 +58,18 @@
             border-color: #0056b3;
         }
     </style>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/"
+        }
+      }
+    </script>
 </head>
 <body>
     <div id="container">
-        </div>
+    </div>
     <div id="controls">
         <button id="btn-face">Flächendiagonale (d) zeigen</button>
         <button id="btn-space">Raumdiagonale (e) zeigen</button>
@@ -66,346 +77,394 @@
         <button id="btn-reset">Zurücksetzen</button>
     </div>
 
-    <script>
-        // Ensure THREE and OrbitControls are loaded before running this
-        if (typeof THREE === 'undefined' || typeof THREE.OrbitControls === 'undefined') {
-            alert("Fehler: Notwendige Three.js-Bibliotheken nicht gefunden. Stellen Sie sicher, dass die Seite online ist oder die CDN-Links korrekt sind.");
-        } else {
-            let scene, camera, renderer, controls;
-            let cube, edges; // Cube mesh (will be made invisible), Edges object
-            let faceDiagonalLine_AC, spaceDiagonalLine_EC; // Diagonals based on image
-            let faceTriangle_ABC, spaceTriangle_AEC; // Meshes for the triangles
-            let faceRightAngleSymbol_B, spaceRightAngleSymbol_A; // Objects for right angle symbols
-            let highlightedElements = []; // Store temporary lines/symbols
+    <script type="module">
+        // Import necessary Three.js components
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
+        import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+        import { Line2 } from 'three/addons/lines/Line2.js';
 
-            // Buttons
-            const btnFace = document.getElementById('btn-face');
-            const btnSpace = document.getElementById('btn-space');
-            const btnBoth = document.getElementById('btn-both'); // New button
-            const btnReset = document.getElementById('btn-reset');
+        // --- Global Variables ---
+        let scene, camera, renderer, controls;
+        let cube, edges; // Standard cube elements
+        let faceDiagonalLine_AC, spaceDiagonalLine_EC; // Thick diagonal lines (Line2)
+        let faceTriangle_ABC, spaceTriangle_AEC; // Triangle meshes
+        let faceRightAngleSymbol_B, spaceRightAngleSymbol_A; // Right angle symbols
+        let highlightedElements = []; // Store temporary lines/symbols/meshes for easy removal
 
-            const cubeSize = 2; // Side length 'a'
-            const halfSize = cubeSize / 2;
+        // Materials for thick lines
+        let faceDiagMaterial_d, spaceDiagMaterial_e, highlightEdgeMaterial;
+        const thickLineWidth = 8; // Desired line width in pixels - ADJUST THIS VALUE AS NEEDED
 
-            // Materials
-            const cubeFaceMaterial = new THREE.MeshPhongMaterial({
-                color: 0xaaaaaa,
-                opacity: 0.1, // Keep low opacity just in case, but will be invisible
-                transparent: true,
-                side: THREE.DoubleSide
-            });
-            const edgeMaterial = new THREE.LineBasicMaterial({ color: 0x111111, linewidth: 1.5 }); // Darker edges
-            const faceDiagMaterial_d = new THREE.LineBasicMaterial({ color: 0x007bff, linewidth: 3 }); // Blue 'd'
-            const spaceDiagMaterial_e = new THREE.LineBasicMaterial({ color: 0xdc3545, linewidth: 3 }); // Red 'e'
-            const highlightEdgeMaterial = new THREE.LineBasicMaterial({ color: 0xffa500, linewidth: 3 }); // Orange for highlighted edges
-            const rightAngleMaterial = new THREE.LineBasicMaterial({ color: 0x111111, linewidth: 1.5 }); // Black symbol lines
-            const rightAngleDotMaterial = new THREE.PointsMaterial({ color: 0x111111, size: 6, sizeAttenuation: false }); // Black dot
+        // Get references to the control buttons
+        const btnFace = document.getElementById('btn-face');
+        const btnSpace = document.getElementById('btn-space');
+        const btnBoth = document.getElementById('btn-both');
+        const btnReset = document.getElementById('btn-reset');
 
-            const faceTriangleMaterial = new THREE.MeshBasicMaterial({
+        // Define cube dimensions
+        const cubeSize = 2;
+        const halfSize = cubeSize / 2;
+
+        // --- Standard Materials (non-lines) ---
+        const cubeFaceMaterial = new THREE.MeshPhongMaterial({
+            color: 0xaaaaaa, opacity: 0.1, transparent: true, side: THREE.DoubleSide
+        });
+        const edgeMaterial = new THREE.LineBasicMaterial({ color: 0x111111, linewidth: 1.5 }); // Keep standard edges thin
+        const rightAngleMaterial = new THREE.LineBasicMaterial({ color: 0x111111, linewidth: 1.5 });
+        const rightAngleDotMaterial = new THREE.PointsMaterial({ color: 0x111111, size: 6, sizeAttenuation: false });
+        const faceTriangleMaterial = new THREE.MeshBasicMaterial({
+            color: 0x007bff, opacity: 0.8, transparent: true, side: THREE.DoubleSide, depthWrite: false
+        });
+        const spaceTriangleMaterial = new THREE.MeshBasicMaterial({
+            color: 0xdc3545, opacity: 0.8, transparent: true, side: THREE.DoubleSide, depthWrite: false
+        });
+
+        // --- Vertices ---
+        const vertices = [
+            new THREE.Vector3(-halfSize, -halfSize, -halfSize), // 0: A
+            new THREE.Vector3( halfSize, -halfSize, -halfSize), // 1: B
+            new THREE.Vector3( halfSize,  halfSize, -halfSize), // 2:
+            new THREE.Vector3(-halfSize,  halfSize, -halfSize), // 3: E
+            new THREE.Vector3(-halfSize, -halfSize,  halfSize), // 4:
+            new THREE.Vector3( halfSize, -halfSize,  halfSize), // 5: C
+            new THREE.Vector3( halfSize,  halfSize,  halfSize), // 6:
+            new THREE.Vector3(-halfSize,  halfSize,  halfSize)  // 7:
+        ];
+
+        // --- Initialization Function ---
+        function init() {
+            const container = document.getElementById('container');
+
+            // Scene setup
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xe0e0e0);
+
+            // Camera setup
+            camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
+            camera.position.set(2.5, 1.5, 3);
+
+            // Renderer setup
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            container.appendChild(renderer.domElement);
+
+            // Controls setup
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.1;
+            controls.minDistance = 2;
+            controls.maxDistance = 20;
+
+            // Lighting setup
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(5, 10, 7.5);
+            scene.add(directionalLight);
+
+            // --- Create Thick Line Materials ---
+            // These need the renderer's size for the 'resolution' uniform
+            const initialSize = new THREE.Vector2();
+            renderer.getSize(initialSize);
+
+            faceDiagMaterial_d = new LineMaterial({
                 color: 0x007bff, // Blue
-                opacity: 0.8,    // Increased opacity for triangles
-                transparent: true,
-                side: THREE.DoubleSide,
-                depthWrite: false // Keep this false for visibility through cube
+                linewidth: thickLineWidth, // in pixels
+                resolution: initialSize, // resolution of the viewport
+                dashed: false,
+                alphaToCoverage: true, // Smoother edges
             });
-            const spaceTriangleMaterial = new THREE.MeshBasicMaterial({
+
+            spaceDiagMaterial_e = new LineMaterial({
                 color: 0xdc3545, // Red
-                opacity: 0.8,    // Increased opacity for triangles
-                transparent: true,
-                side: THREE.DoubleSide,
-                depthWrite: false // Keep this false for visibility through cube
+                linewidth: thickLineWidth, // in pixels
+                resolution: initialSize,
+                dashed: false,
+                alphaToCoverage: true,
             });
 
-             // Vertices based on image A, B, C, E (assuming standard cube centered at origin)
-            const vertices = [
-                new THREE.Vector3(-halfSize, -halfSize, -halfSize), // 0: A (LBB)
-                new THREE.Vector3( halfSize, -halfSize, -halfSize), // 1: B (RBB)
-                new THREE.Vector3( halfSize,  halfSize, -halfSize), // 2: (RTB)
-                new THREE.Vector3(-halfSize,  halfSize, -halfSize), // 3: E (LTB)
-                new THREE.Vector3(-halfSize, -halfSize,  halfSize), // 4: (LBF)
-                new THREE.Vector3( halfSize, -halfSize,  halfSize), // 5: C (RBF)
-                new THREE.Vector3( halfSize,  halfSize,  halfSize), // 6: (RTF)
-                new THREE.Vector3(-halfSize,  halfSize,  halfSize)  // 7: (LTF)
-            ];
-
-            // Initialize the scene
-            function init() {
-                const container = document.getElementById('container');
-
-                // Scene
-                scene = new THREE.Scene();
-                scene.background = new THREE.Color(0xe0e0e0);
-
-                // Camera
-                camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
-                camera.position.set(2.5, 1.5, 3);
-
-                // Renderer
-                renderer = new THREE.WebGLRenderer({ antialias: true });
-                renderer.setPixelRatio(window.devicePixelRatio);
-                renderer.setSize(container.clientWidth, container.clientHeight);
-                container.appendChild(renderer.domElement);
-
-                // Controls
-                controls = new THREE.OrbitControls(camera, renderer.domElement);
-                controls.enableDamping = true;
-                controls.dampingFactor = 0.1;
-                controls.minDistance = 2;
-                controls.maxDistance = 20;
-
-                // Lighting
-                const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
-                scene.add(ambientLight);
-                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-                directionalLight.position.set(5, 10, 7.5);
-                scene.add(directionalLight);
-
-                // Cube Geometry (used for mesh and edges)
-                const geometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
-
-                // Cube Mesh (will be hidden when triangles are shown)
-                cube = new THREE.Mesh(geometry, cubeFaceMaterial);
-                scene.add(cube);
-
-                // Edges (added directly to scene, not as child of cube)
-                const edgesGeometry = new THREE.EdgesGeometry(geometry);
-                edges = new THREE.LineSegments(edgesGeometry, edgeMaterial);
-                scene.add(edges); // Add edges to the scene directly
-
-                // Face Diagonal 'd' (Blue) - Connects A(0) to C(5)
-                const facePoints_d = [vertices[0], vertices[5]];
-                const faceGeom_d = new THREE.BufferGeometry().setFromPoints(facePoints_d);
-                faceDiagonalLine_AC = new THREE.Line(faceGeom_d, faceDiagMaterial_d);
-                faceDiagonalLine_AC.visible = false;
-                faceDiagonalLine_AC.renderOrder = 1; // Render lines potentially after cube edges
-                scene.add(faceDiagonalLine_AC); // Add to scene
-
-                // Space Diagonal 'e' (Red) - Connects E(3) to C(5)
-                const spacePoints_e = [vertices[3], vertices[5]];
-                const spaceGeom_e = new THREE.BufferGeometry().setFromPoints(spacePoints_e);
-                spaceDiagonalLine_EC = new THREE.Line(spaceGeom_e, spaceDiagMaterial_e);
-                spaceDiagonalLine_EC.visible = false;
-                spaceDiagonalLine_EC.renderOrder = 1; // Render lines potentially after cube edges
-                scene.add(spaceDiagonalLine_EC); // Add to scene
-
-                // Create Triangles (initially hidden)
-                createFaceTriangle_ABC();
-                createSpaceTriangle_AEC();
-
-                // Set render order to make triangles render after the cube faces/edges
-                faceTriangle_ABC.renderOrder = 1;
-                spaceTriangle_AEC.renderOrder = 1;
-
-                // Create Right Angle Symbols (initially hidden)
-                faceRightAngleSymbol_B = createRightAngleSymbol(vertices[0], vertices[1], vertices[5]);
-                faceRightAngleSymbol_B.visible = false;
-                faceRightAngleSymbol_B.renderOrder = 2; // Render symbols on top
-                scene.add(faceRightAngleSymbol_B); // Add to scene
-
-                spaceRightAngleSymbol_A = createRightAngleSymbol(vertices[3], vertices[0], vertices[5]);
-                spaceRightAngleSymbol_A.visible = false;
-                spaceRightAngleSymbol_A.renderOrder = 2; // Render symbols on top
-                scene.add(spaceRightAngleSymbol_A); // Add to scene
-
-                // Event Listeners
-                window.addEventListener('resize', onWindowResize, false);
-                btnFace.addEventListener('click', showFaceDerivation);
-                btnSpace.addEventListener('click', showSpaceDerivation);
-                btnBoth.addEventListener('click', showBothDerivations); // Listener for new button
-                btnReset.addEventListener('click', resetView);
-            }
-
-            // Create the BLUE triangle for face diagonal derivation (ABC)
-            function createFaceTriangle_ABC() {
-                const geometry = new THREE.BufferGeometry();
-                const triangleVertices = new Float32Array([
-                    vertices[0].x, vertices[0].y, vertices[0].z, // A
-                    vertices[1].x, vertices[1].y, vertices[1].z, // B
-                    vertices[5].x, vertices[5].y, vertices[5].z  // C
-                ]);
-                geometry.setAttribute('position', new THREE.BufferAttribute(triangleVertices, 3));
-                geometry.setIndex([0, 1, 2]);
-                geometry.computeVertexNormals();
-                faceTriangle_ABC = new THREE.Mesh(geometry, faceTriangleMaterial);
-                faceTriangle_ABC.visible = false;
-                scene.add(faceTriangle_ABC); // Add to scene
-            }
-
-             // Create the RED triangle for space diagonal derivation (AEC)
-            function createSpaceTriangle_AEC() {
-                const geometry = new THREE.BufferGeometry();
-                const triangleVertices = new Float32Array([
-                    vertices[0].x, vertices[0].y, vertices[0].z, // A
-                    vertices[3].x, vertices[3].y, vertices[3].z, // E
-                    vertices[5].x, vertices[5].y, vertices[5].z  // C
-                ]);
-                geometry.setAttribute('position', new THREE.BufferAttribute(triangleVertices, 3));
-                geometry.setIndex([0, 1, 2]);
-                geometry.computeVertexNormals();
-                spaceTriangle_AEC = new THREE.Mesh(geometry, spaceTriangleMaterial);
-                spaceTriangle_AEC.visible = false;
-                scene.add(spaceTriangle_AEC); // Add to scene
-            }
-
-            // Create geometry for the right angle symbol (arc + dot)
-            function createRightAngleSymbol(vertexA, vertexCorner, vertexB) {
-                const symbolGroup = new THREE.Group();
-                const size = 0.2; // Size of the arc radius
-                const segments = 10; // Segments for the arc curve
-
-                const dirA = new THREE.Vector3().subVectors(vertexA, vertexCorner).normalize();
-                const dirB = new THREE.Vector3().subVectors(vertexB, vertexCorner).normalize();
-                const planeNormal = new THREE.Vector3().crossVectors(dirA, dirB).normalize();
-
-                const arcCurve = new THREE.EllipseCurve(0, 0, size, size, 0, Math.PI / 2, false, 0);
-                const points = arcCurve.getPoints(segments);
-                const arcGeometry = new THREE.BufferGeometry().setFromPoints(points);
-                const arcLine = new THREE.Line(arcGeometry, rightAngleMaterial);
-
-                const dotGeometry = new THREE.BufferGeometry();
-                dotGeometry.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0], 3));
-                const dot = new THREE.Points(dotGeometry, rightAngleDotMaterial);
-
-                symbolGroup.add(arcLine);
-                symbolGroup.add(dot);
-                symbolGroup.position.copy(vertexCorner);
-
-                // Align the symbol with the plane formed by the vectors
-                const quaternion = new THREE.Quaternion();
-                const matrix = new THREE.Matrix4();
-                const xAxis = dirA.clone();
-                const yAxis = new THREE.Vector3().crossVectors(planeNormal, xAxis).normalize();
-                const zAxis = planeNormal.clone();
-                matrix.makeBasis(xAxis, yAxis, zAxis);
-                quaternion.setFromRotationMatrix(matrix);
-                symbolGroup.quaternion.copy(quaternion);
-
-                return symbolGroup;
-            }
-
-             // Highlight specific edges of the main cube by creating new LineSegments
-            function highlightCubeEdges(edgeVertexPairs) {
-                edgeVertexPairs.forEach(pair => {
-                    const geom = new THREE.BufferGeometry().setFromPoints([pair[0], pair[1]]);
-                    const line = new THREE.Line(geom, highlightEdgeMaterial);
-                    line.renderOrder = 1; // Render highlights potentially after cube edges
-                    highlightedElements.push(line);
-                    scene.add(line); // Add directly to scene
-                });
-            }
-
-            // Reset highlighted edges and temporary lines/symbols
-            function resetHighlightedElements() {
-                 highlightedElements.forEach(elem => scene.remove(elem)); // Remove from scene
-                 highlightedElements = [];
-            }
-
-            // Show face diagonal derivation (Blue Triangle ABC, Diagonal AC)
-            function showFaceDerivation() {
-                resetView(false);
-                cube.visible = false; // Hide cube faces
-                faceDiagonalLine_AC.visible = true;
-                faceTriangle_ABC.visible = true;
-                faceRightAngleSymbol_B.visible = true;
-                highlightCubeEdges([[vertices[0], vertices[1]], [vertices[1], vertices[5]]]);
-                setActiveButton(btnFace);
-            }
-
-            // Show space diagonal derivation (Red Triangle AEC, Diagonal EC)
-            function showSpaceDerivation() {
-                resetView(false);
-                cube.visible = false; // Hide cube faces
-
-                // Show face diagonal AC (d) as it's part of the triangle
-                const tempFaceDiagLine = new THREE.Line(faceDiagonalLine_AC.geometry, faceDiagMaterial_d);
-                tempFaceDiagLine.renderOrder = 1;
-                highlightedElements.push(tempFaceDiagLine);
-                scene.add(tempFaceDiagLine); // Add to scene
-
-                spaceDiagonalLine_EC.visible = true;
-                spaceTriangle_AEC.visible = true;
-                spaceRightAngleSymbol_A.visible = true;
-                highlightCubeEdges([[vertices[0], vertices[3]]]); // Highlight edge AE
-                setActiveButton(btnSpace);
-            }
-
-            // Show both derivations simultaneously
-            function showBothDerivations() {
-                resetView(false);
-                cube.visible = false; // Hide cube faces
-
-                // Face elements
-                faceDiagonalLine_AC.visible = true;
-                faceTriangle_ABC.visible = true;
-                faceRightAngleSymbol_B.visible = true;
-                highlightCubeEdges([[vertices[0], vertices[1]], [vertices[1], vertices[5]]]); // Edges AB, BC
-
-                // Space elements (reuse face diagonal AC)
-                const tempFaceDiagLine = new THREE.Line(faceDiagonalLine_AC.geometry, faceDiagMaterial_d);
-                tempFaceDiagLine.renderOrder = 1;
-                highlightedElements.push(tempFaceDiagLine);
-                scene.add(tempFaceDiagLine); // Add to scene
-
-                spaceDiagonalLine_EC.visible = true;
-                spaceTriangle_AEC.visible = true;
-                spaceRightAngleSymbol_A.visible = true;
-                highlightCubeEdges([[vertices[0], vertices[3]]]); // Edge AE
-
-                setActiveButton(btnBoth);
-            }
+            highlightEdgeMaterial = new LineMaterial({
+                color: 0xffa500, // Orange
+                linewidth: thickLineWidth, // in pixels
+                resolution: initialSize,
+                dashed: false,
+                alphaToCoverage: true,
+            });
 
 
-            // Reset view to initial state
-            function resetView(updateButtons = true) {
-                cube.visible = true; // Make cube faces visible again
-                faceDiagonalLine_AC.visible = false;
-                spaceDiagonalLine_EC.visible = false;
-                faceTriangle_ABC.visible = false;
-                spaceTriangle_AEC.visible = false;
-                faceRightAngleSymbol_B.visible = false;
-                spaceRightAngleSymbol_A.visible = false;
-                resetHighlightedElements();
-                 if (updateButtons) {
-                     setActiveButton(null);
-                 }
-            }
+            // --- Cube Geometry and Standard Edges ---
+            const geometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
+            cube = new THREE.Mesh(geometry, cubeFaceMaterial); // Invisible faces
+            scene.add(cube);
+            const edgesGeometry = new THREE.EdgesGeometry(geometry);
+            edges = new THREE.LineSegments(edgesGeometry, edgeMaterial); // Thin outline
+            scene.add(edges);
 
-            function setActiveButton(activeButton) {
-                // Include btnBoth in the list
-                [btnFace, btnSpace, btnBoth, btnReset].forEach(btn => {
-                    if (btn === activeButton) {
-                        btn.classList.add('active');
-                    } else {
-                        btn.classList.remove('active');
-                    }
-                });
-                 // Special case for reset button styling
-                 if (activeButton === null) {
-                     btnReset.classList.remove('active');
-                 }
-            }
+            // --- Create Thick Diagonal Lines (Line2) ---
+            // Face Diagonal 'd' (Blue) - A(0) to C(5)
+            let points_d = [vertices[0].x, vertices[0].y, vertices[0].z, vertices[5].x, vertices[5].y, vertices[5].z];
+            let geom_d = new LineGeometry();
+            geom_d.setPositions(points_d);
+            faceDiagonalLine_AC = new Line2(geom_d, faceDiagMaterial_d);
+            faceDiagonalLine_AC.computeLineDistances(); // Necessary for LineMaterial
+            faceDiagonalLine_AC.scale.set(1, 1, 1); // Default scale
+            faceDiagonalLine_AC.visible = false;
+            faceDiagonalLine_AC.renderOrder = 1; // Render potentially after cube edges
+            scene.add(faceDiagonalLine_AC);
 
-            // Handle window resize events
-            function onWindowResize() {
-                const container = document.getElementById('container');
-                if (!container) return;
-                camera.aspect = container.clientWidth / container.clientHeight;
-                camera.updateProjectionMatrix();
-                renderer.setSize(container.clientWidth, container.clientHeight);
-            }
+            // Space Diagonal 'e' (Red) - E(3) to C(5)
+            let points_e = [vertices[3].x, vertices[3].y, vertices[3].z, vertices[5].x, vertices[5].y, vertices[5].z];
+            let geom_e = new LineGeometry();
+            geom_e.setPositions(points_e);
+            spaceDiagonalLine_EC = new Line2(geom_e, spaceDiagMaterial_e);
+            spaceDiagonalLine_EC.computeLineDistances();
+            spaceDiagonalLine_EC.scale.set(1, 1, 1);
+            spaceDiagonalLine_EC.visible = false;
+            spaceDiagonalLine_EC.renderOrder = 1;
+            scene.add(spaceDiagonalLine_EC);
 
-            // Animation loop
-            function animate() {
-                requestAnimationFrame(animate);
-                controls.update();
-                renderer.render(scene, camera);
-            }
+            // --- Create Triangles (initially hidden) ---
+            createFaceTriangle_ABC();
+            createSpaceTriangle_AEC();
+            faceTriangle_ABC.renderOrder = 1;
+            spaceTriangle_AEC.renderOrder = 1;
 
-            // --- Start Execution ---
-            init();
-            animate();
-            resetView();
+            // --- Create Right Angle Symbols (initially hidden) ---
+            faceRightAngleSymbol_B = createRightAngleSymbol(vertices[0], vertices[1], vertices[5]);
+            faceRightAngleSymbol_B.visible = false;
+            faceRightAngleSymbol_B.renderOrder = 2;
+            scene.add(faceRightAngleSymbol_B);
+
+            spaceRightAngleSymbol_A = createRightAngleSymbol(vertices[3], vertices[0], vertices[5]);
+            spaceRightAngleSymbol_A.visible = false;
+            spaceRightAngleSymbol_A.renderOrder = 2;
+            scene.add(spaceRightAngleSymbol_A);
+
+            // --- Event Listeners ---
+            window.addEventListener('resize', onWindowResize, false);
+            btnFace.addEventListener('click', showFaceDerivation);
+            btnSpace.addEventListener('click', showSpaceDerivation);
+            btnBoth.addEventListener('click', showBothDerivations);
+            btnReset.addEventListener('click', resetView);
         }
+
+        // --- Helper Functions ---
+
+        function createFaceTriangle_ABC() {
+            const geometry = new THREE.BufferGeometry();
+            const triangleVertices = new Float32Array([
+                vertices[0].x, vertices[0].y, vertices[0].z, // A
+                vertices[1].x, vertices[1].y, vertices[1].z, // B
+                vertices[5].x, vertices[5].y, vertices[5].z  // C
+            ]);
+            geometry.setAttribute('position', new THREE.BufferAttribute(triangleVertices, 3));
+            geometry.setIndex([0, 1, 2]);
+            geometry.computeVertexNormals();
+            faceTriangle_ABC = new THREE.Mesh(geometry, faceTriangleMaterial);
+            faceTriangle_ABC.visible = false;
+            scene.add(faceTriangle_ABC);
+        }
+
+        function createSpaceTriangle_AEC() {
+            const geometry = new THREE.BufferGeometry();
+            const triangleVertices = new Float32Array([
+                vertices[0].x, vertices[0].y, vertices[0].z, // A
+                vertices[3].x, vertices[3].y, vertices[3].z, // E
+                vertices[5].x, vertices[5].y, vertices[5].z  // C
+            ]);
+            geometry.setAttribute('position', new THREE.BufferAttribute(triangleVertices, 3));
+            geometry.setIndex([0, 1, 2]);
+            geometry.computeVertexNormals();
+            spaceTriangle_AEC = new THREE.Mesh(geometry, spaceTriangleMaterial);
+            spaceTriangle_AEC.visible = false;
+            scene.add(spaceTriangle_AEC);
+        }
+
+        function createRightAngleSymbol(vertexA, vertexCorner, vertexB) {
+            // (Implementation remains the same as before)
+            const symbolGroup = new THREE.Group();
+            const size = 0.2;
+            const segments = 10;
+
+            const dirA = new THREE.Vector3().subVectors(vertexA, vertexCorner).normalize();
+            const dirB = new THREE.Vector3().subVectors(vertexB, vertexCorner).normalize();
+            const planeNormal = new THREE.Vector3().crossVectors(dirA, dirB).normalize();
+
+            const arcCurve = new THREE.EllipseCurve(0, 0, size, size, 0, Math.PI / 2, false, 0);
+            const points = arcCurve.getPoints(segments);
+            const arcGeometry = new THREE.BufferGeometry().setFromPoints(points);
+            const arcLine = new THREE.Line(arcGeometry, rightAngleMaterial); // Use thin line material
+
+            const dotGeometry = new THREE.BufferGeometry();
+            dotGeometry.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0], 3));
+            const dot = new THREE.Points(dotGeometry, rightAngleDotMaterial);
+
+            symbolGroup.add(arcLine);
+            symbolGroup.add(dot);
+            symbolGroup.position.copy(vertexCorner);
+
+            const quaternion = new THREE.Quaternion();
+            const matrix = new THREE.Matrix4();
+            const xAxis = dirA.clone();
+            const zAxis = planeNormal.clone();
+            const yAxis = new THREE.Vector3().crossVectors(zAxis, xAxis).normalize();
+            matrix.makeBasis(xAxis, yAxis, zAxis);
+            quaternion.setFromRotationMatrix(matrix);
+            symbolGroup.quaternion.copy(quaternion);
+
+            return symbolGroup;
+        }
+
+        // Highlight specific edges using thick Line2 objects
+        function highlightCubeEdges(edgeVertexPairs) {
+            edgeVertexPairs.forEach(pair => {
+                const points = [pair[0].x, pair[0].y, pair[0].z, pair[1].x, pair[1].y, pair[1].z];
+                const geom = new LineGeometry();
+                geom.setPositions(points);
+                // Use the pre-defined highlightEdgeMaterial
+                const line = new Line2(geom, highlightEdgeMaterial);
+                line.computeLineDistances();
+                line.scale.set(1, 1, 1);
+                line.renderOrder = 1; // Render potentially after cube edges
+                highlightedElements.push(line); // Store for later removal
+                scene.add(line);
+            });
+        }
+
+        // Reset highlighted elements and temporary lines/symbols
+        function resetHighlightedElements() {
+             highlightedElements.forEach(elem => {
+                 // Check if it's a disposable geometry/material and dispose if necessary
+                 if (elem.geometry) elem.geometry.dispose();
+                 // Note: We reuse materials here, so don't dispose them unless they are unique to the element
+                 scene.remove(elem);
+             });
+             highlightedElements = [];
+        }
+
+        // --- Button Action Functions ---
+
+        function showFaceDerivation() {
+            resetView(false);
+            cube.visible = false;
+            faceDiagonalLine_AC.visible = true; // Show thick blue line
+            faceTriangle_ABC.visible = true;
+            faceRightAngleSymbol_B.visible = true;
+            highlightCubeEdges([ [vertices[0], vertices[1]], [vertices[1], vertices[5]] ]); // Thick orange lines
+            setActiveButton(btnFace);
+        }
+
+        function showSpaceDerivation() {
+            resetView(false);
+            cube.visible = false;
+
+            // Show face diagonal AC (d) as part of the triangle, using its thick blue material
+            // Create a temporary Line2 object for this specific view
+            const points_d = [vertices[0].x, vertices[0].y, vertices[0].z, vertices[5].x, vertices[5].y, vertices[5].z];
+            const geom_d_temp = new LineGeometry();
+            geom_d_temp.setPositions(points_d);
+            const tempFaceDiagLine = new Line2(geom_d_temp, faceDiagMaterial_d); // Use blue thick material
+            tempFaceDiagLine.computeLineDistances();
+            tempFaceDiagLine.scale.set(1, 1, 1);
+            tempFaceDiagLine.renderOrder = 1;
+            highlightedElements.push(tempFaceDiagLine); // Add to temporary elements
+            scene.add(tempFaceDiagLine);
+
+            spaceDiagonalLine_EC.visible = true; // Show thick red line
+            spaceTriangle_AEC.visible = true;
+            spaceRightAngleSymbol_A.visible = true;
+            highlightCubeEdges([ [vertices[0], vertices[3]] ]); // Thick orange line AE
+            setActiveButton(btnSpace);
+        }
+
+        function showBothDerivations() {
+            resetView(false);
+            cube.visible = false;
+
+            // Face elements
+            faceDiagonalLine_AC.visible = true; // Thick blue
+            faceTriangle_ABC.visible = true;
+            faceRightAngleSymbol_B.visible = true;
+            highlightCubeEdges([ [vertices[0], vertices[1]], [vertices[1], vertices[5]] ]); // Thick orange AB, BC
+
+            // Space elements
+            spaceDiagonalLine_EC.visible = true; // Thick red
+            spaceTriangle_AEC.visible = true;
+            spaceRightAngleSymbol_A.visible = true;
+            highlightCubeEdges([ [vertices[0], vertices[3]] ]); // Thick orange AE
+
+            // Note: faceDiagonalLine_AC is already visible, no need for a temporary one here.
+
+            setActiveButton(btnBoth);
+        }
+
+        // Reset view to initial state
+        function resetView(updateButtons = true) {
+            cube.visible = true;
+            faceDiagonalLine_AC.visible = false;
+            spaceDiagonalLine_EC.visible = false;
+            faceTriangle_ABC.visible = false;
+            spaceTriangle_AEC.visible = false;
+            faceRightAngleSymbol_B.visible = false;
+            spaceRightAngleSymbol_A.visible = false;
+            resetHighlightedElements(); // Remove temporary thick lines
+             if (updateButtons) {
+                  setActiveButton(null);
+             }
+        }
+
+        // --- UI Helper Functions ---
+        function setActiveButton(activeButton) {
+            [btnFace, btnSpace, btnBoth, btnReset].forEach(btn => {
+                if (btn === activeButton) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+             if (activeButton === null || activeButton === btnReset) {
+                 btnReset.classList.remove('active');
+             }
+        }
+
+        // --- Event Handlers ---
+        function onWindowResize() {
+            const container = document.getElementById('container');
+            if (!container) return;
+
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            // Update camera
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+
+            // Update renderer
+            renderer.setSize(width, height);
+
+            // Update resolution uniform for all LineMaterials
+            const newSize = new THREE.Vector2(width, height);
+            faceDiagMaterial_d.resolution = newSize;
+            spaceDiagMaterial_e.resolution = newSize;
+            highlightEdgeMaterial.resolution = newSize;
+        }
+
+        // --- Animation Loop ---
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // --- Start Execution ---
+        init();
+        animate();
+        resetView();
+
     </script>
 </body>
 </html>
+
