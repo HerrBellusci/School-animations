@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Interaktiver 3D-Würfel: Diagonalen (Deutlich Dickere Linien)</title>
+    <title>Interaktiver 3D-Würfel: Diagonalen & Dreiecke</title>
     <style>
         body {
             margin: 0;
@@ -18,7 +18,8 @@
         }
         #container {
             width: 100%;
-            height: calc(100% - 60px); /* Adjust height for controls */
+            /* Adjust height for potentially even taller controls if wrapping occurs */
+            height: calc(100% - 100px);
             position: relative;
             background-color: #e0e0e0; /* Match scene background */
         }
@@ -29,34 +30,42 @@
         }
         #controls {
             width: 100%;
-            height: 60px; /* Fixed height for controls */
+            min-height: 100px; /* Increased minimum height for more buttons */
             display: flex;
             justify-content: center;
             align-items: center;
             background-color: #f8f9fa;
             border-top: 1px solid #dee2e6;
-            padding: 0 10px;
+            padding: 5px 10px;
             box-sizing: border-box;
-            flex-wrap: wrap; /* Allow buttons to wrap on smaller screens */
+            flex-wrap: wrap; /* Allow buttons to wrap */
         }
         #controls button {
-            padding: 8px 12px; /* Slightly smaller padding */
-            margin: 5px; /* Add margin for wrapping */
-            font-size: 13px; /* Slightly smaller font */
+            padding: 6px 10px;
+            margin: 4px;
+            font-size: 12px;
             cursor: pointer;
             border: 1px solid #ccc;
             border-radius: 5px;
             background-color: #fff;
-            transition: background-color 0.2s;
+            transition: background-color 0.2s, border-color 0.2s, color 0.2s;
         }
         #controls button:hover {
             background-color: #e9ecef;
         }
-         #controls button.active {
+         /* Style for the main mode buttons */
+        #controls button.mode-active {
             background-color: #007bff;
             color: white;
             border-color: #0056b3;
         }
+         /* Style for the toggle buttons when their element is visible */
+         #controls button.toggle-active {
+             background-color: #28a745; /* Green background */
+             color: white;
+             border-color: #1e7e34;
+         }
+
     </style>
     <script type="importmap">
       {
@@ -75,9 +84,42 @@
         <button id="btn-space">Raumdiagonale (e) zeigen</button>
         <button id="btn-both">Beides zeigen</button>
         <button id="btn-reset">Zurücksetzen</button>
+        <button id="btn-only-face-diag">Nur Flächendiagonale (d)</button>
+        <button id="btn-only-space-diag">Nur Raumdiagonale (e)</button>
+        <button id="btn-toggle-face-triangle">Flächendreieck an/aus</button>
+        <button id="btn-toggle-space-triangle">Raumdreieck an/aus</button>
     </div>
 
     <script type="module">
+        /*
+         * MIT License
+         *
+         * Copyright (c) 2025 [Ihr Name oder Projektname] - BITTE ERSETZEN
+         *
+         * Permission is hereby granted, free of charge, to any person obtaining a copy
+         * of this software and associated documentation files (the "Software"), to deal
+         * in the Software without restriction, including without limitation the rights
+         * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+         * copies of the Software, and to permit persons to whom the Software is
+         * furnished to do so, subject to the following conditions:
+         *
+         * The above copyright notice and this permission notice shall be included in all
+         * copies or substantial portions of the Software.
+         *
+         * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+         * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+         * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+         * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+         * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+         * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+         * SOFTWARE.
+         *
+         * ---
+         *
+         * This code uses the three.js library, which is also licensed under the MIT license.
+         * https://github.com/mrdoob/three.js/blob/dev/LICENSE
+         */
+
         // Import necessary Three.js components
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -95,13 +137,17 @@
 
         // Materials for thick lines
         let faceDiagMaterial_d, spaceDiagMaterial_e, highlightEdgeMaterial;
-        const thickLineWidth = 8; // Desired line width in pixels - ADJUST THIS VALUE AS NEEDED
+        const thickLineWidth = 8; // Desired line width in pixels
 
         // Get references to the control buttons
         const btnFace = document.getElementById('btn-face');
         const btnSpace = document.getElementById('btn-space');
         const btnBoth = document.getElementById('btn-both');
         const btnReset = document.getElementById('btn-reset');
+        const btnOnlyFaceDiag = document.getElementById('btn-only-face-diag');
+        const btnOnlySpaceDiag = document.getElementById('btn-only-space-diag');
+        const btnToggleFaceTriangle = document.getElementById('btn-toggle-face-triangle');
+        const btnToggleSpaceTriangle = document.getElementById('btn-toggle-space-triangle');
 
         // Define cube dimensions
         const cubeSize = 2;
@@ -111,7 +157,7 @@
         const cubeFaceMaterial = new THREE.MeshPhongMaterial({
             color: 0xaaaaaa, opacity: 0.1, transparent: true, side: THREE.DoubleSide
         });
-        const edgeMaterial = new THREE.LineBasicMaterial({ color: 0x111111, linewidth: 1.5 }); // Keep standard edges thin
+        const edgeMaterial = new THREE.LineBasicMaterial({ color: 0x111111, linewidth: 1.5 });
         const rightAngleMaterial = new THREE.LineBasicMaterial({ color: 0x111111, linewidth: 1.5 });
         const rightAngleDotMaterial = new THREE.PointsMaterial({ color: 0x111111, size: 6, sizeAttenuation: false });
         const faceTriangleMaterial = new THREE.MeshBasicMaterial({
@@ -125,12 +171,12 @@
         const vertices = [
             new THREE.Vector3(-halfSize, -halfSize, -halfSize), // 0: A
             new THREE.Vector3( halfSize, -halfSize, -halfSize), // 1: B
-            new THREE.Vector3( halfSize,  halfSize, -halfSize), // 2:
+            new THREE.Vector3( halfSize,  halfSize, -halfSize), // 2: F
             new THREE.Vector3(-halfSize,  halfSize, -halfSize), // 3: E
-            new THREE.Vector3(-halfSize, -halfSize,  halfSize), // 4:
+            new THREE.Vector3(-halfSize, -halfSize,  halfSize), // 4: D
             new THREE.Vector3( halfSize, -halfSize,  halfSize), // 5: C
-            new THREE.Vector3( halfSize,  halfSize,  halfSize), // 6:
-            new THREE.Vector3(-halfSize,  halfSize,  halfSize)  // 7:
+            new THREE.Vector3( halfSize,  halfSize,  halfSize), // 6: G
+            new THREE.Vector3(-halfSize,  halfSize,  halfSize)  // 7: H
         ];
 
         // --- Initialization Function ---
@@ -166,21 +212,20 @@
             scene.add(directionalLight);
 
             // --- Create Thick Line Materials ---
-            // These need the renderer's size for the 'resolution' uniform
             const initialSize = new THREE.Vector2();
             renderer.getSize(initialSize);
 
             faceDiagMaterial_d = new LineMaterial({
                 color: 0x004080, // Blue
-                linewidth: thickLineWidth, // in pixels
-                resolution: initialSize, // resolution of the viewport
+                linewidth: thickLineWidth,
+                resolution: initialSize,
                 dashed: false,
-                alphaToCoverage: true, // Smoother edges
+                alphaToCoverage: true,
             });
 
             spaceDiagMaterial_e = new LineMaterial({
                 color: 0xdc3545, // Red
-                linewidth: thickLineWidth, // in pixels
+                linewidth: thickLineWidth,
                 resolution: initialSize,
                 dashed: false,
                 alphaToCoverage: true,
@@ -188,7 +233,7 @@
 
             highlightEdgeMaterial = new LineMaterial({
                 color: 0xffa500, // Orange
-                linewidth: thickLineWidth, // in pixels
+                linewidth: thickLineWidth,
                 resolution: initialSize,
                 dashed: false,
                 alphaToCoverage: true,
@@ -197,25 +242,23 @@
 
             // --- Cube Geometry and Standard Edges ---
             const geometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
-            cube = new THREE.Mesh(geometry, cubeFaceMaterial); // Invisible faces
+            cube = new THREE.Mesh(geometry, cubeFaceMaterial);
             scene.add(cube);
             const edgesGeometry = new THREE.EdgesGeometry(geometry);
-            edges = new THREE.LineSegments(edgesGeometry, edgeMaterial); // Thin outline
+            edges = new THREE.LineSegments(edgesGeometry, edgeMaterial);
             scene.add(edges);
 
             // --- Create Thick Diagonal Lines (Line2) ---
-            // Face Diagonal 'd' (Blue) - A(0) to C(5)
             let points_d = [vertices[0].x, vertices[0].y, vertices[0].z, vertices[5].x, vertices[5].y, vertices[5].z];
             let geom_d = new LineGeometry();
             geom_d.setPositions(points_d);
             faceDiagonalLine_AC = new Line2(geom_d, faceDiagMaterial_d);
-            faceDiagonalLine_AC.computeLineDistances(); // Necessary for LineMaterial
-            faceDiagonalLine_AC.scale.set(1, 1, 1); // Default scale
+            faceDiagonalLine_AC.computeLineDistances();
+            faceDiagonalLine_AC.scale.set(1, 1, 1);
             faceDiagonalLine_AC.visible = false;
-            faceDiagonalLine_AC.renderOrder = 1; // Render potentially after cube edges
+            faceDiagonalLine_AC.renderOrder = 1;
             scene.add(faceDiagonalLine_AC);
 
-            // Space Diagonal 'e' (Red) - E(3) to C(5)
             let points_e = [vertices[3].x, vertices[3].y, vertices[3].z, vertices[5].x, vertices[5].y, vertices[5].z];
             let geom_e = new LineGeometry();
             geom_e.setPositions(points_e);
@@ -229,8 +272,8 @@
             // --- Create Triangles (initially hidden) ---
             createFaceTriangle_ABC();
             createSpaceTriangle_AEC();
-            faceTriangle_ABC.renderOrder = 1;
-            spaceTriangle_AEC.renderOrder = 1;
+            faceTriangle_ABC.renderOrder = 0;
+            spaceTriangle_AEC.renderOrder = 0;
 
             // --- Create Right Angle Symbols (initially hidden) ---
             faceRightAngleSymbol_B = createRightAngleSymbol(vertices[0], vertices[1], vertices[5]);
@@ -248,7 +291,11 @@
             btnFace.addEventListener('click', showFaceDerivation);
             btnSpace.addEventListener('click', showSpaceDerivation);
             btnBoth.addEventListener('click', showBothDerivations);
-            btnReset.addEventListener('click', resetView);
+            btnReset.addEventListener('click', () => resetView(true));
+            btnOnlyFaceDiag.addEventListener('click', showOnlyFaceDiagonal);
+            btnOnlySpaceDiag.addEventListener('click', showOnlySpaceDiagonal);
+            btnToggleFaceTriangle.addEventListener('click', toggleFaceTriangle);
+            btnToggleSpaceTriangle.addEventListener('click', toggleSpaceTriangle);
         }
 
         // --- Helper Functions ---
@@ -284,28 +331,22 @@
         }
 
         function createRightAngleSymbol(vertexA, vertexCorner, vertexB) {
-            // (Implementation remains the same as before)
             const symbolGroup = new THREE.Group();
             const size = 0.2;
             const segments = 10;
-
             const dirA = new THREE.Vector3().subVectors(vertexA, vertexCorner).normalize();
             const dirB = new THREE.Vector3().subVectors(vertexB, vertexCorner).normalize();
             const planeNormal = new THREE.Vector3().crossVectors(dirA, dirB).normalize();
-
             const arcCurve = new THREE.EllipseCurve(0, 0, size, size, 0, Math.PI / 2, false, 0);
             const points = arcCurve.getPoints(segments);
             const arcGeometry = new THREE.BufferGeometry().setFromPoints(points);
-            const arcLine = new THREE.Line(arcGeometry, rightAngleMaterial); // Use thin line material
-
+            const arcLine = new THREE.Line(arcGeometry, rightAngleMaterial);
             const dotGeometry = new THREE.BufferGeometry();
             dotGeometry.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0], 3));
             const dot = new THREE.Points(dotGeometry, rightAngleDotMaterial);
-
             symbolGroup.add(arcLine);
             symbolGroup.add(dot);
             symbolGroup.position.copy(vertexCorner);
-
             const quaternion = new THREE.Quaternion();
             const matrix = new THREE.Matrix4();
             const xAxis = dirA.clone();
@@ -314,32 +355,26 @@
             matrix.makeBasis(xAxis, yAxis, zAxis);
             quaternion.setFromRotationMatrix(matrix);
             symbolGroup.quaternion.copy(quaternion);
-
             return symbolGroup;
         }
 
-        // Highlight specific edges using thick Line2 objects
         function highlightCubeEdges(edgeVertexPairs) {
             edgeVertexPairs.forEach(pair => {
                 const points = [pair[0].x, pair[0].y, pair[0].z, pair[1].x, pair[1].y, pair[1].z];
                 const geom = new LineGeometry();
                 geom.setPositions(points);
-                // Use the pre-defined highlightEdgeMaterial
                 const line = new Line2(geom, highlightEdgeMaterial);
                 line.computeLineDistances();
                 line.scale.set(1, 1, 1);
-                line.renderOrder = 1; // Render potentially after cube edges
-                highlightedElements.push(line); // Store for later removal
+                line.renderOrder = 1;
+                highlightedElements.push(line);
                 scene.add(line);
             });
         }
 
-        // Reset highlighted elements and temporary lines/symbols
         function resetHighlightedElements() {
              highlightedElements.forEach(elem => {
-                 // Check if it's a disposable geometry/material and dispose if necessary
                  if (elem.geometry) elem.geometry.dispose();
-                 // Note: We reuse materials here, so don't dispose them unless they are unique to the element
                  scene.remove(elem);
              });
              highlightedElements = [];
@@ -350,85 +385,125 @@
         function showFaceDerivation() {
             resetView(false);
             cube.visible = false;
-            faceDiagonalLine_AC.visible = true; // Show thick blue line
+            edges.visible = true;
+            faceDiagonalLine_AC.visible = true;
             faceTriangle_ABC.visible = true;
             faceRightAngleSymbol_B.visible = true;
-            highlightCubeEdges([ [vertices[0], vertices[1]], [vertices[1], vertices[5]] ]); // Thick orange lines
+            highlightCubeEdges([ [vertices[0], vertices[1]], [vertices[1], vertices[5]] ]);
             setActiveButton(btnFace);
+            updateToggleButtonsState();
         }
 
         function showSpaceDerivation() {
             resetView(false);
             cube.visible = false;
-
-            // Show face diagonal AC (d) as part of the triangle, using its thick blue material
-            // Create a temporary Line2 object for this specific view
+            edges.visible = true;
+            spaceDiagonalLine_EC.visible = true;
+            spaceTriangle_AEC.visible = true;
+            spaceRightAngleSymbol_A.visible = true;
             const points_d = [vertices[0].x, vertices[0].y, vertices[0].z, vertices[5].x, vertices[5].y, vertices[5].z];
             const geom_d_temp = new LineGeometry();
             geom_d_temp.setPositions(points_d);
-            const tempFaceDiagLine = new Line2(geom_d_temp, faceDiagMaterial_d); // Use blue thick material
+            const tempFaceDiagLine = new Line2(geom_d_temp, faceDiagMaterial_d);
             tempFaceDiagLine.computeLineDistances();
             tempFaceDiagLine.scale.set(1, 1, 1);
             tempFaceDiagLine.renderOrder = 1;
-            highlightedElements.push(tempFaceDiagLine); // Add to temporary elements
+            highlightedElements.push(tempFaceDiagLine);
             scene.add(tempFaceDiagLine);
-
-            spaceDiagonalLine_EC.visible = true; // Show thick red line
-            spaceTriangle_AEC.visible = true;
-            spaceRightAngleSymbol_A.visible = true;
-            highlightCubeEdges([ [vertices[0], vertices[3]] ]); // Thick orange line AE
+            highlightCubeEdges([ [vertices[0], vertices[3]] ]);
             setActiveButton(btnSpace);
+            updateToggleButtonsState();
         }
 
         function showBothDerivations() {
             resetView(false);
             cube.visible = false;
-
-            // Face elements
-            faceDiagonalLine_AC.visible = true; // Thick blue
+            edges.visible = true;
+            faceDiagonalLine_AC.visible = true;
             faceTriangle_ABC.visible = true;
             faceRightAngleSymbol_B.visible = true;
-            highlightCubeEdges([ [vertices[0], vertices[1]], [vertices[1], vertices[5]] ]); // Thick orange AB, BC
-
-            // Space elements
-            spaceDiagonalLine_EC.visible = true; // Thick red
+            highlightCubeEdges([ [vertices[0], vertices[1]], [vertices[1], vertices[5]] ]);
+            spaceDiagonalLine_EC.visible = true;
             spaceTriangle_AEC.visible = true;
             spaceRightAngleSymbol_A.visible = true;
-            highlightCubeEdges([ [vertices[0], vertices[3]] ]); // Thick orange AE
-
-            // Note: faceDiagonalLine_AC is already visible, no need for a temporary one here.
-
+            highlightCubeEdges([ [vertices[0], vertices[3]] ]);
             setActiveButton(btnBoth);
+            updateToggleButtonsState();
         }
 
-        // Reset view to initial state
+        function showOnlyFaceDiagonal() {
+            resetView(false);
+            cube.visible = true;
+            edges.visible = true;
+            faceDiagonalLine_AC.visible = true;
+            setActiveButton(btnOnlyFaceDiag);
+            updateToggleButtonsState();
+        }
+
+        function showOnlySpaceDiagonal() {
+            resetView(false);
+            cube.visible = true;
+            edges.visible = true;
+            spaceDiagonalLine_EC.visible = true;
+            setActiveButton(btnOnlySpaceDiag);
+            updateToggleButtonsState();
+        }
+
         function resetView(updateButtons = true) {
             cube.visible = true;
+            edges.visible = true;
             faceDiagonalLine_AC.visible = false;
             spaceDiagonalLine_EC.visible = false;
             faceTriangle_ABC.visible = false;
             spaceTriangle_AEC.visible = false;
             faceRightAngleSymbol_B.visible = false;
             spaceRightAngleSymbol_A.visible = false;
-            resetHighlightedElements(); // Remove temporary thick lines
-             if (updateButtons) {
-                  setActiveButton(null);
-             }
+            resetHighlightedElements();
+            if (updateButtons) {
+                 setActiveButton(null);
+                 updateToggleButtonsState();
+            }
+        }
+
+        // --- Toggle Button Functions ---
+        function toggleFaceTriangle() {
+            faceTriangle_ABC.visible = !faceTriangle_ABC.visible;
+            updateToggleButtonsState();
+        }
+
+        function toggleSpaceTriangle() {
+            spaceTriangle_AEC.visible = !spaceTriangle_AEC.visible;
+            updateToggleButtonsState();
         }
 
         // --- UI Helper Functions ---
         function setActiveButton(activeButton) {
-            [btnFace, btnSpace, btnBoth, btnReset].forEach(btn => {
+            [btnFace, btnSpace, btnBoth, btnReset, btnOnlyFaceDiag, btnOnlySpaceDiag].forEach(btn => {
                 if (btn === activeButton) {
-                    btn.classList.add('active');
+                    btn.classList.add('mode-active');
                 } else {
-                    btn.classList.remove('active');
+                    btn.classList.remove('mode-active');
                 }
             });
-             if (activeButton === null || activeButton === btnReset) {
-                 btnReset.classList.remove('active');
-             }
+            if (activeButton === null || activeButton === btnReset) {
+                 btnReset.classList.remove('mode-active');
+            }
         }
+
+        function updateToggleButtonsState() {
+            if (faceTriangle_ABC.visible) {
+                btnToggleFaceTriangle.classList.add('toggle-active');
+            } else {
+                btnToggleFaceTriangle.classList.remove('toggle-active');
+            }
+
+            if (spaceTriangle_AEC.visible) {
+                btnToggleSpaceTriangle.classList.add('toggle-active');
+            } else {
+                btnToggleSpaceTriangle.classList.remove('toggle-active');
+            }
+        }
+
 
         // --- Event Handlers ---
         function onWindowResize() {
@@ -438,14 +513,11 @@
             const width = container.clientWidth;
             const height = container.clientHeight;
 
-            // Update camera
             camera.aspect = width / height;
             camera.updateProjectionMatrix();
 
-            // Update renderer
             renderer.setSize(width, height);
 
-            // Update resolution uniform for all LineMaterials
             const newSize = new THREE.Vector2(width, height);
             faceDiagMaterial_d.resolution = newSize;
             spaceDiagMaterial_e.resolution = newSize;
@@ -462,9 +534,8 @@
         // --- Start Execution ---
         init();
         animate();
-        resetView();
+        resetView(true);
 
     </script>
 </body>
 </html>
-
