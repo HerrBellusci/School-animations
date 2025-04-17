@@ -1,1 +1,204 @@
 
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Summenhäufigkeits-Diagramme</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Zusätzliches Styling, falls benötigt */
+        body {
+            font-family: sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 p-8">
+
+    <h1 class="text-2xl font-bold text-center mb-8">Visualisierung der Häufigkeiten (Notenbeispiel N=19)</h1>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+
+        <div class="bg-white p-6 rounded-lg shadow-md">
+            <h2 class="text-xl font-semibold text-center mb-4">Absolute Häufigkeiten</h2>
+            <canvas id="absolutePlot"></canvas>
+        </div>
+
+        <div class="bg-white p-6 rounded-lg shadow-md">
+             <h2 class="text-xl font-semibold text-center mb-4">Relative Häufigkeiten</h2>
+            <canvas id="relativePlot"></canvas>
+        </div>
+
+    </div>
+
+    <script>
+        // --- Daten definieren (aus dem Beispiel) ---
+        const noten = [1, 2, 3, 4, 5, 6];
+        const abs_h = [2, 5, 8, 3, 1, 0];
+        const N = abs_h.reduce((a, b) => a + b, 0); // Summe berechnen N = 19
+
+        // --- Berechnungen ---
+        const rel_h = abs_h.map(h => (h / N) * 100); // Relative Häufigkeit in Prozent
+
+        // Kumulative Häufigkeiten berechnen
+        let current_abs_sum = 0;
+        const abs_sum_h = abs_h.map(h => {
+            current_abs_sum += h;
+            return current_abs_sum;
+        });
+
+        let current_rel_sum = 0;
+        const rel_sum_h = rel_h.map(f => {
+            current_rel_sum += f;
+            // Kleine Korrektur, um sicherzustellen, dass 100% nicht überschritten wird
+            // und am Ende genau 100% erreicht wird (aufgrund von Rundungsfehlern)
+             if (current_rel_sum > 99.99 && current_rel_sum < 100.01) {
+               return 100.0;
+             }
+            return current_rel_sum;
+        });
+         // Sicherstellen, dass der letzte Wert exakt 100 ist, falls N>0
+         if (N > 0 && rel_sum_h.length > 0) {
+            rel_sum_h[rel_sum_h.length - 1] = 100.0;
+         }
+
+
+        // --- Chart.js Konfiguration ---
+
+        // Plot 1: Absolute Häufigkeiten
+        const ctxAbs = document.getElementById('absolutePlot').getContext('2d');
+        const absoluteChart = new Chart(ctxAbs, {
+            type: 'bar', // Grundtyp ist Balken
+            data: {
+                labels: noten, // Noten auf der X-Achse
+                datasets: [{
+                    type: 'bar', // Explizit als Balken
+                    label: 'Absolute Häufigkeit (h_i)',
+                    data: abs_h,
+                    backgroundColor: 'rgba(54, 162, 235, 0.6)', // Hellblau mit Transparenz
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    borderWidth: 1
+                }, {
+                    type: 'line', // Explizit als Linie
+                    label: 'Absolute Summenhäufigkeit (H_i)',
+                    data: abs_sum_h,
+                    borderColor: 'rgba(255, 99, 132, 1)', // Rot
+                    backgroundColor: 'rgba(255, 99, 132, 0.1)', // Leichte Füllung unter der Linie
+                    stepped: true, // Treppenfunktion
+                    pointBackgroundColor: 'rgba(255, 99, 132, 1)',
+                    pointRadius: 4,
+                    fill: false, // Keine Füllung unter der Linie
+                    tension: 0 // Gerade Liniensegmente
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true, // Passt die Größe an, behält aber das Verhältnis bei
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Note'
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        max: N + 1, // Y-Achse bis max Summe + Puffer
+                        title: {
+                            display: true,
+                            text: 'Absolute Häufigkeit'
+                        }
+                    }
+                },
+                plugins: {
+                   legend: {
+                        position: 'top',
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false
+                    }
+                }
+            }
+        });
+
+        // Plot 2: Relative Häufigkeiten
+        const ctxRel = document.getElementById('relativePlot').getContext('2d');
+        const relativeChart = new Chart(ctxRel, {
+            type: 'bar',
+            data: {
+                labels: noten,
+                datasets: [{
+                    type: 'bar',
+                    label: 'Relative Häufigkeit (f_i)',
+                    data: rel_h, // Daten sind bereits in %
+                    backgroundColor: 'rgba(75, 192, 192, 0.6)', // Türkis/Grün mit Transparenz
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1
+                }, {
+                    type: 'line',
+                    label: 'Relative Summenhäufigkeit (F_i)',
+                    data: rel_sum_h, // Daten sind bereits in %
+                    borderColor: 'rgba(153, 102, 255, 1)', // Lila
+                    backgroundColor: 'rgba(153, 102, 255, 0.1)',
+                    stepped: true,
+                    pointBackgroundColor: 'rgba(153, 102, 255, 1)',
+                    pointRadius: 4,
+                    fill: false,
+                    tension: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                scales: {
+                     x: {
+                        title: {
+                            display: true,
+                            text: 'Note'
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        max: 105, // Y-Achse bis 100% + Puffer
+                        title: {
+                            display: true,
+                            text: 'Relative Häufigkeit (%)'
+                        },
+                        // Callback zur Formatierung der Y-Achsen-Ticks als Prozent
+                        ticks: {
+                            callback: function(value) {
+                                return value + '%';
+                            }
+                        }
+                    }
+                },
+                 plugins: {
+                   legend: {
+                        position: 'top',
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                         callbacks: {
+                            // Tooltip für Prozentwerte formatieren
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                if (context.parsed.y !== null) {
+                                    label += context.parsed.y.toFixed(1) + '%';
+                                }
+                                return label;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    </script>
+
+</body>
+</html>
